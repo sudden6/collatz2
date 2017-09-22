@@ -5,6 +5,7 @@
 #include <time.h>
 #include <inttypes.h>
 #include "math256.h"
+#include "cleared_file.h"
 #include <iostream>
 
 using namespace std;
@@ -36,7 +37,7 @@ double checkpoint5 = 0.0;
 
 // File-Handler für Ausgabedateien für betrachtete Reste (cleared) und
 // Kandidatenzahlen (candidate)
-FILE *f_cleared = NULL;
+cleared_file f_cleared;
 FILE *f_candidate;
 // bzw. für Einlesen der zu bearbeitenden Reste (worktodo)
 FILE *f_worktodo;
@@ -1143,46 +1144,6 @@ uint64_t sieve_second_stage (const uint_fast32_t nr_it, const uint64_t rest,
     return credits;
 }
 
-// Liest schon abgearbeitete Restklassen aus
-// Gibt 0 zurück, wenn noch kein File "cleared.txt" existierte und also
-// bisher noch keine Restklasse abgearbeitet wurde.
-uint_fast32_t resume()
-{
-    char string1[20];
-    char string2[20];
-    char string3[40];
-    char string4[20];
-
-    uint_fast32_t i;
-    uint_fast32_t rest;
-    uint64_t credits;
-    uint_fast32_t no_of_cand;
-
-    f_cleared = fopen("cleared.txt","r");
-    if (f_cleared != NULL)
-    {
-        int_fast32_t dummy = fscanf(f_cleared, "%s %s %s %s\n", string1,
-                                    string2, string3, string4);
-
-        if (dummy != 4) return 2; // Fehler beim Einlesen
-
-        while ( fscanf(f_cleared, "%" SCNuFAST32 " %" SCNuFAST32 " %" SCNu64 " %" SCNuFAST32 "\n", &i, &rest, &credits,
-                                                     &no_of_cand) >= 2)
-        {
-            if ((idx_min <= i) && (i < idx_max))
-            cleared_res[i-idx_min] = 1;
-        }
-
-        fclose(f_cleared);
-
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
-}
-
 // Liest schon gefundene Kandidaten aus
 // Gibt 0 zurück, wenn noch kein File "candidates.txt" existierte und also
 // bisher noch kein Kandidat gefunden wurde. Andernfalls wird der zuletzt
@@ -1231,13 +1192,16 @@ uint_fast32_t findlastfoundcandidate()
 //Führt Initialisierung des Siebs aus
 void init()
 {
-    uint_fast32_t cleared_file_exists = resume();
-
-    f_cleared = fopen("cleared.txt","a");
-    if (!cleared_file_exists)
+    // Liest schon abgearbeitete Restklassen aus, sofern sie existeren
+    if (f_cleared.is_valid())
     {
-        fprintf(f_cleared, "No_ResCl ResCl_mod_2^32 Multistep_Calls #Cand\n");
-        fflush(f_cleared);
+        if(idx_min <= f_cleared.last_rest_class && (f_cleared.last_rest_class < idx_max))
+        {
+            for(uint_fast32_t i = 0; i <= (f_cleared.last_rest_class - idx_min); i++)
+            {
+                cleared_res[i] = 1;
+            }
+        }
     }
 
     uint_fast32_t candidate_file_exists = findlastfoundcandidate();
@@ -1309,8 +1273,6 @@ int main()
 #if defined BOINC
         boinc_finish(1);
 #else
-        printf("press enter to exit.\n");
-        getchar();
         return 1;
 #endif
     }
@@ -1365,9 +1327,9 @@ int main()
             if (!cleared_res[i])
             { // Nur, wenn Rest noch nicht abgearbeitet
                 no_found_candidates = 0;
-                credits = sieve_second_stage(SIEVE_DEPTH_FIRST, reste_array[i], it32_rest[i],
-                                             ((double) pot3_64Bit(it32_odd[i])) / (((uint64_t)1) << SIEVE_DEPTH_FIRST),
-                                             it32_odd[i]);
+                //credits = sieve_second_stage(SIEVE_DEPTH_FIRST, reste_array[i], it32_rest[i],
+                //                             ((double) pot3_64Bit(it32_odd[i])) / (((uint64_t)1) << SIEVE_DEPTH_FIRST),
+                //                             it32_odd[i]);
 
                 #pragma omp critical
                 {
@@ -1375,11 +1337,7 @@ int main()
                     printf("%4" PRIuFAST32 ": Residue Class No. ",rescnt);
                     printf(" %8" PRIuFAST32 " is done. %fs\n",i+idx_min, get_time() - start_time);
 
-                    fprintf(f_cleared, "%8" PRIuFAST32 ,i+idx_min);
-                    fprintf(f_cleared, "     %10" PRIuFAST32, reste_array[i]);
-                    fprintf(f_cleared, " %15" PRIu64, credits);
-                    fprintf(f_cleared, " %5" PRIuFAST32 "\n", no_found_candidates);
-                    fflush(f_cleared);
+                    f_cleared.append(i+idx_min, reste_array[i], credits, no_found_candidates);
 #if defined BOINC
                     boinc_checkpoint_completed();
 #endif
@@ -1395,7 +1353,6 @@ int main()
 
         // Ausgabedateien, die durch init() geöffnet wurden, wieder schließen
         if (f_candidate != NULL) fclose(f_candidate);
-        if (f_cleared   != NULL) fclose(f_cleared);
     }
 
     // Nun auch Eingabedatei "worktodo.txt" wieder schließen
