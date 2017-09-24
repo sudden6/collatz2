@@ -9,6 +9,8 @@ set(${PROJECT_NAME}_SOURCES
     "src/cleared_file.h"
     "src/csv_file.cpp"
     "src/csv_file.h"
+    "src/worktodo_file.cpp"
+    "src/worktodo_file.h"
     "src/main.cpp"
     "src/math256.cpp"
     "src/math256.h"

@@ -6,6 +6,7 @@
 #include <inttypes.h>
 #include "math256.h"
 #include "cleared_file.h"
+#include "worktodo_file.h"
 #include <iostream>
 
 using namespace std;
@@ -40,7 +41,7 @@ double checkpoint5 = 0.0;
 cleared_file f_cleared;
 FILE *f_candidate;
 // bzw. für Einlesen der zu bearbeitenden Reste (worktodo)
-FILE *f_worktodo;
+worktodo_file f_worktodo;
 
 // globale Variablen für Start und Ende des Bereichs der zu bearbeitenden Reste
 uint_fast32_t idx_min;
@@ -1236,23 +1237,6 @@ void init()
     printf("\nSieve initialized\n");
 }
 
-
-// Liest zu bearbeitenden Restklassen-Bereich ein
-// gibt 0 zurück bei Einlese-Fehler, sonst 1
-int worktodo()
-{
-    idx_min = 0;
-    idx_max = 0;
-
-    if (fscanf(f_worktodo, "%" SCNuFAST32 " %" SCNuFAST32 " ", &idx_min, &idx_max) != 2) return 0;
-
-    //if (idx_max > restcnt_it32) idx_max = restcnt_it32;
-    if (idx_min > idx_max) idx_min = idx_max;
-
-    return 1;
-}
-
-
 int main()
 {
     // Initialisierungen
@@ -1263,13 +1247,9 @@ int main()
     init_multistep();
 
     // Start und Ende des zu bearbeitendenen Bereichs aus Datei auslesen.
-
-    f_worktodo = fopen("worktodo.txt","r");
-    if (f_worktodo == NULL)
+    if (!f_worktodo.is_valid())
     {
-        printf("\n File 'worktodo.txt' is missing! \n\n");
-        printf("Every line in this file consists of two numbers:\n");
-        printf("<No. of first Residue Class> <No. of last+1 Residue Class>\n\n");
+        printf("\n File 'worktodo.csv' is missing or invalid! \n\n");
 #if defined BOINC
         boinc_finish(1);
 #else
@@ -1277,90 +1257,80 @@ int main()
 #endif
     }
 
-    while (worktodo()) // Solang zeilenweise je eine Arbeitsaufgabe eingelesen werden kann
+    idx_min = f_worktodo.rest_class_start;
+    idx_max = f_worktodo.rest_class_end;
+
+    uint_fast32_t i;
+    uint_fast32_t rescnt = 0;
+
+    // Anzahl in diesem Durchlauf zu untersuchender Restklassen
+    unsigned int size = idx_max - idx_min;
+
+    //Speicher-Allokation für Ausgabe nach erstem Siebschritt
+    reste_array = (uint_fast32_t*) malloc(size * sizeof(uint_fast32_t));
+    it32_rest   = (uint64_t*) malloc(size * sizeof(uint64_t));
+    it32_odd    = (uint32_t*) malloc(size * sizeof(uint32_t));
+    cleared_res = (uint32_t*) calloc(size,  sizeof(uint32_t));
+
+    if ((reste_array == NULL) || (it32_rest == NULL) || (it32_odd == NULL) || (cleared_res == NULL))
     {
-        uint_fast32_t i;
-        uint_fast32_t rescnt = 0;
-
-        // Anzahl in diesem Durchlauf zu untersuchender Restklassen
-        unsigned int size = idx_max - idx_min;
-
-        //Speicher-Allokation für Ausgabe nach erstem Siebschritt
-        reste_array = (uint_fast32_t*) malloc(size * sizeof(uint_fast32_t));
-        it32_rest   = (uint64_t*) malloc(size * sizeof(uint64_t));
-        it32_odd    = (uint32_t*) malloc(size * sizeof(uint32_t));
-        cleared_res = (uint32_t*) calloc(size,  sizeof(uint32_t));
-
-        if ((reste_array == NULL) || (it32_rest == NULL) || (it32_odd == NULL) || (cleared_res == NULL))
-        {
-            printf("Error while allocating memory!\n\n");
+        printf("Error while allocating memory!\n\n");
 #if defined BOINC
-            boinc_finish(1);
+        boinc_finish(1);
 #else
-            printf("press enter to exit.\n");
-            getchar();
-
-            return 1;
+        return 1;
 #endif
-        }
-
-
-        // Initialisierung des Siebs
-        init();
-
-        uint64_t credits;
-
-        printf("Test of Residue Classes No. %" PRIuFAST32, idx_min);
-        printf(" -- %" PRIuFAST32 "\n\n", idx_max);
-        double start_time = get_time();
-
-        // Möglichkeit zur Parallelisierung
-        #pragma omp parallel for \
-        private(i, it_rest_arr, pot3_odd_arr, it_f_arr, it_minf_arr, res64_arr, new_it_f_arr, marks_arr, \
-                small_res_arr, credits, no_found_candidates, start_arr, it_arr) \
-        shared(rescnt) schedule(dynamic)
-        for (i = 0; i < idx_max - idx_min; i++)
-        {
-#if defined BOINC
-            boinc_fraction_done((double) i/(idx_max-idx_min));
-#endif
-            if (!cleared_res[i])
-            { // Nur, wenn Rest noch nicht abgearbeitet
-                no_found_candidates = 0;
-                //credits = sieve_second_stage(SIEVE_DEPTH_FIRST, reste_array[i], it32_rest[i],
-                //                             ((double) pot3_64Bit(it32_odd[i])) / (((uint64_t)1) << SIEVE_DEPTH_FIRST),
-                //                             it32_odd[i]);
-
-                #pragma omp critical
-                {
-                    rescnt++;
-                    printf("%4" PRIuFAST32 ": Residue Class No. ",rescnt);
-                    printf(" %8" PRIuFAST32 " is done. %fs\n",i+idx_min, get_time() - start_time);
-
-                    f_cleared.append(i+idx_min, reste_array[i], credits, no_found_candidates);
-#if defined BOINC
-                    boinc_checkpoint_completed();
-#endif
-                }
-            }
-        }
-
-        //Speicherfreigabe nach getaner Arbeit
-        free(reste_array);
-        free(it32_rest);
-        free(it32_odd);
-        free(cleared_res);
-
-        // Ausgabedateien, die durch init() geöffnet wurden, wieder schließen
-        if (f_candidate != NULL) fclose(f_candidate);
     }
 
-    // Nun auch Eingabedatei "worktodo.txt" wieder schließen
-    if (f_worktodo != NULL) fclose(f_worktodo);
 
-    // Keine Aufgaben mehr in Datei vorhanden
-    //int remove_failed = remove("worktodo.txt");
-    //if (remove_failed) printf("Could not delete file 'worktodo.txt'.\n\n");
+    // Initialisierung des Siebs
+    init();
+
+    uint64_t credits;
+
+    printf("Test of Residue Classes No. %" PRIuFAST32, idx_min);
+    printf(" -- %" PRIuFAST32 "\n\n", idx_max);
+    double start_time = get_time();
+
+    // Möglichkeit zur Parallelisierung
+    #pragma omp parallel for \
+    private(i, it_rest_arr, pot3_odd_arr, it_f_arr, it_minf_arr, res64_arr, new_it_f_arr, marks_arr, \
+            small_res_arr, credits, no_found_candidates, start_arr, it_arr) \
+    shared(rescnt) schedule(dynamic)
+    for (i = 0; i < idx_max - idx_min; i++)
+    {
+#if defined BOINC
+        boinc_fraction_done((double) i/(idx_max-idx_min));
+#endif
+        if (!cleared_res[i])
+        { // Nur, wenn Rest noch nicht abgearbeitet
+            no_found_candidates = 0;
+            //credits = sieve_second_stage(SIEVE_DEPTH_FIRST, reste_array[i], it32_rest[i],
+            //                             ((double) pot3_64Bit(it32_odd[i])) / (((uint64_t)1) << SIEVE_DEPTH_FIRST),
+            //                             it32_odd[i]);
+
+            #pragma omp critical
+            {
+                rescnt++;
+                printf("%4" PRIuFAST32 ": Residue Class No. ",rescnt);
+                printf(" %8" PRIuFAST32 " is done. %fs\n",i+idx_min, get_time() - start_time);
+
+                f_cleared.append(i+idx_min, reste_array[i], credits, no_found_candidates);
+#if defined BOINC
+                boinc_checkpoint_completed();
+#endif
+            }
+        }
+    }
+
+    //Speicherfreigabe nach getaner Arbeit
+    free(reste_array);
+    free(it32_rest);
+    free(it32_odd);
+    free(cleared_res);
+
+    // Ausgabedateien, die durch init() geöffnet wurden, wieder schließen
+    if (f_candidate != NULL) fclose(f_candidate);
 
     printf("chk1: %lu chk2: %lu chk3: %lu chk4: %lu chk5: %f\n", checkpoint1, checkpoint2, checkpoint3, checkpoint4, checkpoint5);
 
