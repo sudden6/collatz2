@@ -16,7 +16,8 @@ public:
     static uint_fast32_t mod10(const uint256_t number);
     static uint256_t div10(const uint256_t number);
     static uint_fast32_t bitnum(const uint256_t myvalue);
-    std::string to_string();
+    static uint256_t from_string(const std::string& str);
+    std::string to_string() const;
 
     inline bool operator==(const uint256_t& rhs) const
     {

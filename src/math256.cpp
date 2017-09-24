@@ -70,7 +70,7 @@ uint256_t uint256_t::div10(const uint256_t number)
     return result;
 }
 
-std::string uint256_t::to_string()
+std::string uint256_t::to_string() const
 {
     std::string ascii_number;
     ascii_number.reserve(80);
@@ -88,6 +88,25 @@ std::string uint256_t::to_string()
 
     std::reverse(ascii_number.begin(), ascii_number.end());
     return ascii_number;
+}
+
+uint256_t uint256_t::from_string(const std::string& str)
+{
+    uint256_t result(0);
+    for(const char& c :str)
+    {
+        if((c > 47) && (c < 58))
+        {
+            int digit = c - 48;
+            // TODO: implement real multiplication for this type
+            for(int i = 0; i < 10; i++)
+            {
+                result = result + result;
+            }
+            result = result + digit;
+        }
+    }
+    return result;
 }
 
 //Berechnet Anzahl Binärstellen; nach gonz

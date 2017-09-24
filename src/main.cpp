@@ -5,6 +5,7 @@
 #include <time.h>
 #include <inttypes.h>
 #include "math256.h"
+#include "candidates_file.h"
 #include "cleared_file.h"
 #include "worktodo_file.h"
 #include <iostream>
@@ -39,7 +40,7 @@ double checkpoint5 = 0.0;
 // File-Handler für Ausgabedateien für betrachtete Reste (cleared) und
 // Kandidatenzahlen (candidate)
 cleared_file f_cleared;
-FILE *f_candidate;
+candidates_file f_candidate;
 // bzw. für Einlesen der zu bearbeitenden Reste (worktodo)
 worktodo_file f_worktodo;
 
@@ -114,43 +115,6 @@ double get_time() {
   return tp.tv_sec + tp.tv_usec / 1000000.0;
 }
 
-uint128_t string_to_uint128_t (const char number_string[])
-{
-    uint128_t number = 0;
-    uint_fast32_t position;
-    uint_fast32_t digit;
-
-    for (position = 0; number_string[position] != 0; position++)
-    {
-        // Ziffer aus ASCII-Zeichen zurückrechnen
-        digit = number_string[position] - 48;
-        number = number * 10 + digit;
-    }
-
-    return number;
-}
-
-
-// Ausgabe int256 in Datei im Dezimalformat nach gonz
-// mindigits: Minimale Stellenanzahl für rechtsbündige
-// Ausrichtung.
-void fprintf_256( uint256_t number, uint_fast32_t mindigits)
-{
-    char string[80];
-    uint_fast32_t length = 80;
-
-    std::string digits = number.to_string();
-    digits.copy(string, digits.size());
-    string[digits.size()] = '\0';
-
-    uint_fast32_t loop;
-    for (loop=mindigits-1; loop >length-1; loop--)
-    {
-        fprintf(f_candidate," ");
-    }
-
-    fprintf(f_candidate,"%s", string);
-}
 
 // Füllt das 128-Bit-Dreier-Potenz-Array
 void init_potarray()
@@ -181,7 +145,7 @@ int nr_residue_class(const uint128_t start)
     return -1;
 }
 
-uint128_t last_found_candidate_before_resume = 0;
+uint256_t last_found_candidate_before_resume(0);
 
 // Nachrechnen eines Rekords und Ausgabe; nach gonz
 void print_candidate(const uint128_t start)
@@ -216,22 +180,17 @@ void print_candidate(const uint128_t start)
         if (it >= MAX_NR_OF_ITERATIONS)
         {
             printf("*** Maximum Number of Iterations reached! ***\n");
-            fprintf(f_candidate,
-                    "*** Maximum Number of Iterations reached! ***\n");
+            // TODO: better way for this?
+            // mark this error in output with record=0 and bits=0
+            f_candidate.append(start, 0, 0, nr_residue_class(start));
         }
 
-        printf("** Start=");
-        cout << start_256.to_string();
-        printf(" %" PRIuFAST32 "Bit Record=", uint256_t::bitnum(start_256));
+        cout << "** Start=" << start_256.to_string();
+        cout << " Bit Record=" << uint256_t::bitnum(start_256);
         cout << myrecord.to_string();
-        printf(" %" PRIuFAST32 "  Bit\n", uint256_t::bitnum(myrecord));
-
-        fprintf_256(start_256, MINDIGITS_START);
-        fprintf(f_candidate," ");//%2i ",bitnum(start));
-        fprintf_256(myrecord, MINDIGITS_RECORD);
-        fprintf(f_candidate," %3lu %8u\n", uint256_t::bitnum(myrecord),
-                                         nr_residue_class(start));
-        fflush(f_candidate);
+        cout << " Bit " << uint256_t::bitnum(myrecord) << endl;
+        f_candidate.append(start_256, myrecord, uint256_t::bitnum(myrecord),
+                           nr_residue_class(start));
     }
 }
 
@@ -1145,55 +1104,10 @@ uint64_t sieve_second_stage (const uint_fast32_t nr_it, const uint64_t rest,
     return credits;
 }
 
-// Liest schon gefundene Kandidaten aus
-// Gibt 0 zurück, wenn noch kein File "candidates.txt" existierte und also
-// bisher noch kein Kandidat gefunden wurde. Andernfalls wird der zuletzt
-// gefundene Kandidat in der globalen Variable mit dem Namen
-// last_found_candidate_before_resume abgespeichert, damit gegen diese beim
-// Finden eines neuen Kandidaten abgeglichen werden, und so vermieden werden
-// kann, dass nach einem Neustart des Programms der gleiche Kandidat ein
-// zweites mal als "neu" gefunden wird.
-uint_fast32_t findlastfoundcandidate()
-{
-    f_candidate =fopen("candidates.txt", "r");
-    if (f_candidate == NULL) return 0;
-
-    char Start_string[40];
-    char Record_string[80];
-    char Bit_string[10];
-    char No_ResCl_string[10];
-
-    int_fast32_t dummy = fscanf(f_candidate, "%s %s %s %s\n",
-                                Start_string, Record_string,
-                                Bit_string, No_ResCl_string);
-
-    if (dummy != 4) return 2; // Fehler beim Einlesen
-
-    int_fast32_t no_of_read_args;
-    uint_fast32_t read_lines = 0;
-
-    //Finde letzte Zeile in Datei candidates.txt
-    do
-    {
-        no_of_read_args = fscanf(f_candidate, "%s %s %s %s\n", Start_string,
-                                 Record_string, Bit_string, No_ResCl_string);
-        read_lines++;
-    } while ((no_of_read_args == 4)
-             || ((no_of_read_args >= 1) && (Start_string[0] == '*')));
-
-    if (read_lines > 1) // mindestens ein Kandidat gelesen
-    {
-        last_found_candidate_before_resume = string_to_uint128_t(Start_string);
-    }
-
-    fclose(f_candidate);
-    return 1;
-}
-
 //Führt Initialisierung des Siebs aus
 void init()
 {
-    // Liest schon abgearbeitete Restklassen aus, sofern sie existeren
+    // Liest schon abgearbeitete Restklassen ein, sofern sie existeren
     if (f_cleared.is_valid())
     {
         if(idx_min <= f_cleared.last_rest_class && (f_cleared.last_rest_class < idx_max))
@@ -1205,15 +1119,10 @@ void init()
         }
     }
 
-    uint_fast32_t candidate_file_exists = findlastfoundcandidate();
-
-    f_candidate =fopen("candidates.txt", "a");
-    if (!candidate_file_exists)
+    // liest den letzten gefundenen Kandidaten ein
+    if (f_candidate.is_valid())
     {
-        fprintf(f_candidate, "               Start");
-        fprintf(f_candidate, "                                  Record");
-        fprintf(f_candidate, " Bit No_ResCl\n");
-        fflush(f_candidate);
+        last_found_candidate_before_resume = f_candidate.last_start;
     }
 
     // Bisher 0 betrachtete Restklassen mod 2^32
@@ -1328,9 +1237,6 @@ int main()
     free(it32_rest);
     free(it32_odd);
     free(cleared_res);
-
-    // Ausgabedateien, die durch init() geöffnet wurden, wieder schließen
-    if (f_candidate != NULL) fclose(f_candidate);
 
     printf("chk1: %lu chk2: %lu chk3: %lu chk4: %lu chk5: %f\n", checkpoint1, checkpoint2, checkpoint3, checkpoint4, checkpoint5);
 

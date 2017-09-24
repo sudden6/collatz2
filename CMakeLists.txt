@@ -5,6 +5,8 @@ set (CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_FLAGS "-msse -msse2 -msse3")
 
 set(${PROJECT_NAME}_SOURCES
+    "src/candidates_file.cpp"
+    "src/candidates_file.h"
     "src/cleared_file.cpp"
     "src/cleared_file.h"
     "src/csv_file.cpp"
