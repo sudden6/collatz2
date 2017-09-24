@@ -179,7 +179,7 @@ void print_candidate(const uint128_t start)
     {
         if (it >= MAX_NR_OF_ITERATIONS)
         {
-            printf("*** Maximum Number of Iterations reached! ***\n");
+            cout << "*** Maximum Number of Iterations reached! ***" << endl;
             // TODO: better way for this?
             // mark this error in output with record=0 and bits=0
             f_candidate.append(start, 0, 0, nr_residue_class(start));
@@ -1143,7 +1143,7 @@ void init()
         if (idx_min > idx_max) idx_min = idx_max;
     }
 
-    printf("\nSieve initialized\n");
+    cout << endl << "Sieve initialized" << endl;
 }
 
 int main()
@@ -1158,7 +1158,7 @@ int main()
     // Start und Ende des zu bearbeitendenen Bereichs aus Datei auslesen.
     if (!f_worktodo.is_valid())
     {
-        printf("\n File 'worktodo.csv' is missing or invalid! \n\n");
+        cout << endl << "File 'worktodo.csv' is missing or invalid!" << endl;
 #if defined BOINC
         boinc_finish(1);
 #else
@@ -1183,7 +1183,7 @@ int main()
 
     if ((reste_array == NULL) || (it32_rest == NULL) || (it32_odd == NULL) || (cleared_res == NULL))
     {
-        printf("Error while allocating memory!\n\n");
+        cout << endl << "Error while allocating memory!" << endl;
 #if defined BOINC
         boinc_finish(1);
 #else
@@ -1197,8 +1197,8 @@ int main()
 
     uint64_t credits;
 
-    printf("Test of Residue Classes No. %" PRIuFAST32, idx_min);
-    printf(" -- %" PRIuFAST32 "\n\n", idx_max);
+    cout << "Test of Residue Classes No. " << idx_min << endl;
+    cout << " -- " << idx_max << endl;
     double start_time = get_time();
 
     // Möglichkeit zur Parallelisierung
@@ -1221,8 +1221,8 @@ int main()
             #pragma omp critical
             {
                 rescnt++;
-                printf("%4" PRIuFAST32 ": Residue Class No. ",rescnt);
-                printf(" %8" PRIuFAST32 " is done. %fs\n",i+idx_min, get_time() - start_time);
+                cout << rescnt << ": Residue Class No. " << (i+idx_min)
+                     << " is done. " << (get_time() - start_time) << "s"<<endl;
 
                 f_cleared.append(i+idx_min, reste_array[i], credits, no_found_candidates);
 #if defined BOINC
@@ -1238,7 +1238,9 @@ int main()
     free(it32_odd);
     free(cleared_res);
 
-    printf("chk1: %lu chk2: %lu chk3: %lu chk4: %lu chk5: %f\n", checkpoint1, checkpoint2, checkpoint3, checkpoint4, checkpoint5);
+    cout << "chk1: "  << checkpoint1 << " chk2: " << checkpoint2 <<
+            " chk3: " << checkpoint3 << " chk4: " << checkpoint4 <<
+            " chk5: " << checkpoint5 << endl;
 
 #if defined BOINC
     boinc_finish(0);
